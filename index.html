@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Beyond Exact Match: Unmasking WER Inflation in Akan ASR</title>
+<meta name="description" content="Variant-aware WER (va-WER) for Akan ASR: standard WER is inflated by 15–17% relative due to legitimate phonological and code-switching variation.">
+<meta property="og:title" content="Beyond Exact Match: Unmasking WER Inflation in Akan ASR through Variant-Aware Evaluation">
+<meta property="og:description" content="Standard WER penalizes valid Akan dialectal variation as errors. va-WER separates genuine model failures from benign variation.">
+<meta property="og:image" content="static/images/fig4_traceback.png">
+<style>
+  /* Google Sans (SIL OFL), self-hosted from Fontsource */
+  @font-face{font-family:"Google Sans";font-style:normal;font-weight:400;font-display:swap;src:url(static/fonts/google-sans-latin-400-normal.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+  @font-face{font-family:"Google Sans";font-style:normal;font-weight:400;font-display:swap;src:url(static/fonts/google-sans-latin-ext-400-normal.woff2) format("woff2");unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C4,U+2113,U+2C60-2C7F,U+A720-A7FF}
+  @font-face{font-family:"Google Sans";font-style:normal;font-weight:500;font-display:swap;src:url(static/fonts/google-sans-latin-500-normal.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+  @font-face{font-family:"Google Sans";font-style:normal;font-weight:500;font-display:swap;src:url(static/fonts/google-sans-latin-ext-500-normal.woff2) format("woff2");unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C4,U+2113,U+2C60-2C7F,U+A720-A7FF}
+  @font-face{font-family:"Google Sans";font-style:normal;font-weight:700;font-display:swap;src:url(static/fonts/google-sans-latin-700-normal.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+  @font-face{font-family:"Google Sans";font-style:normal;font-weight:700;font-display:swap;src:url(static/fonts/google-sans-latin-ext-700-normal.woff2) format("woff2");unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C4,U+2113,U+2C60-2C7F,U+A720-A7FF}
+  @font-face{font-family:"Google Sans Code";font-style:normal;font-weight:400;font-display:swap;src:url(static/fonts/google-sans-code-latin-400-normal.woff2) format("woff2")}
+
+  :root{
+    /* Google brand palette */
+    --g-blue:#4285F4; --g-red:#EA4335; --g-yellow:#FBBC04; --g-green:#34A853;
+    --blue-soft:#e8f0fe; --red-soft:#fce8e6; --yellow-soft:#fef7e0; --green-soft:#e6f4ea;
+    --blue-ink:#1a73e8; --red-ink:#c5221f; --yellow-ink:#b06000; --green-ink:#188038;
+    --ink:#202124; --ink-2:#5f6368; --ink-3:#80868b;
+    --line:#e8eaed; --soft:#f8f9fa; --bg:#fff;
+    --max:1000px;
+    --font:"Google Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+    --mono:"Google Sans Code",ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;font-family:var(--font);color:var(--ink);background:var(--bg);font-size:17px;line-height:1.65;-webkit-font-smoothing:antialiased}
+  a{color:var(--blue-ink);text-decoration:none}
+  a:hover{text-decoration:underline}
+  code{font-family:var(--mono);font-size:.92em}
+  .wrap{max-width:var(--max);margin:0 auto;padding:0 24px}
+  .narrow{max-width:800px;margin:0 auto}
+
+  /* kente-inspired strip in Google colours */
+  .strip{height:6px;background:repeating-linear-gradient(90deg,var(--g-blue) 0 30px,var(--ink) 30px 35px,var(--g-red) 35px 65px,var(--ink) 65px 70px,var(--g-yellow) 70px 100px,var(--ink) 100px 105px,var(--g-green) 105px 135px,var(--ink) 135px 140px)}
+
+  /* ---------- hero ---------- */
+  header.hero{text-align:center;padding:60px 0 24px}
+  .venue{display:inline-block;font-size:10px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:var(--blue-ink);background:var(--blue-soft);padding:5px 14px;border-radius:999px;margin-bottom:22px}
+  h1{font-weight:500;font-size:clamp(30px,4.4vw,46px);line-height:1.18;margin:0 auto 26px;max-width:900px;letter-spacing:-.015em}
+  .authors{font-size:18.5px;line-height:1.95;max-width:880px;margin:0 auto}
+  .authors > *{white-space:nowrap;margin:0 9px;display:inline-block}
+  .authors a{color:var(--blue-ink)}
+  .authors sup{color:var(--ink-3);font-size:11px;margin-left:1px}
+  .affils{display:flex;justify-content:center;gap:clamp(28px,7vw,90px);margin-top:26px;flex-wrap:wrap}
+  .affil{display:flex;flex-direction:column;align-items:center;gap:12px}
+  .affil .nm{font-size:16px;color:var(--ink-2)}
+  .affil .nm sup{color:var(--ink-3);margin-right:2px}
+  /* LOGO SIZES — change these two heights to resize the logos (width scales automatically) */
+  .affil img{display:block;height:44px;width:auto}          /* Google */
+  .affil img.ashesi{height:48px}                            /* Ashesi */
+  .venue:hover{text-decoration:none;background:#d2e3fc}
+  .btns{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-top:30px}
+  .btn{display:inline-flex;align-items:center;gap:8px;background:var(--ink);color:#fff;border-radius:999px;padding:9px 20px;font-size:15px;font-weight:500;transition:transform .15s,background .15s}
+  .btn:hover{text-decoration:none;background:#000;transform:translateY(-1px)}
+  .btn svg{width:17px;height:17px;fill:currentColor}
+  .btn.soon{background:#f1f3f4;color:var(--ink-3);cursor:default}
+  .btn.soon:hover{transform:none}
+  .btn small{font-size:11px;opacity:.8}
+
+  /* ---------- teaser animation (Figure 4 style) ---------- */
+  .teaser{width:min(1400px,calc(100vw - 32px));position:relative;left:50%;transform:translateX(-50%);margin-top:30px}
+  .tz-scroll{overflow-x:auto}
+  #tz{display:block;width:100%;height:auto}
+  #tz text{font-family:var(--font)}
+  #tz .fd{opacity:0;transition:opacity .5s ease}
+  #tz .fd.on{opacity:1}
+  #tz .pop{opacity:0;transform:scale(.5);transform-box:fill-box;transform-origin:center;transition:opacity .45s ease,transform .55s cubic-bezier(.2,.9,.3,1.35)}
+  #tz .pop.on{opacity:1;transform:none}
+  #tz .ring{transform-box:fill-box;transform-origin:center;animation:ring 1.8s ease-out infinite}
+  @keyframes ring{from{transform:scale(1);opacity:.75}to{transform:scale(1.4);opacity:0}}
+  .t-ctrl{display:flex;justify-content:flex-end;margin-top:2px}
+  .t-ctrl p{margin:0;font-size:13px;color:var(--ink-3)}
+  .t-ctrl .ctls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .spd{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden}
+  .spd button{border:0;background:#fff;font:500 12.5px var(--font);color:var(--ink-2);padding:5px 11px;cursor:pointer}
+  .spd button.on{background:var(--ink);color:#fff}
+  .ctl{border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 14px;font:500 13px var(--font);cursor:pointer;color:var(--ink-2);display:inline-flex;align-items:center;gap:6px}
+  .ctl:hover{background:var(--soft)}
+
+  /* stats */
+  .stats{display:grid;grid-template-columns:1.35fr 1fr 1fr;gap:14px;margin:34px 0 10px}
+  .stat{background:#f5f3ff;border:1px solid #e4e0fb;border-radius:16px;padding:20px 18px;text-align:center}
+  .stat .n{color:#5b3fd1}
+  .stat.main{background:#ede9fe;border-color:#d8cffc}
+  .stat.main .n{font-size:40px}
+  .stat.main .l{color:#4c3d8f;font-size:14px}
+  .stat .n{font-size:32px;font-weight:500;line-height:1.1}
+  .stat .l{font-size:13px;color:var(--ink-2);margin-top:6px;line-height:1.4}
+
+  section{padding:56px 0}
+  section.band{background:#f7f7f5;box-shadow:0 0 0 100vmax #f7f7f5;clip-path:inset(0 -100vmax)}
+  .eyebrow{display:block;text-align:center;font-size:12.5px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#5b3fd1;margin-bottom:8px}
+  .cap{display:flex;align-items:baseline;gap:10px;margin:30px 0 12px;font-size:16px;font-weight:500;color:var(--ink)}
+  .cap b{flex:none;font-size:11.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#5b3fd1;background:#f0edff;border-radius:6px;padding:3px 8px}
+  .cap span{color:var(--ink-2);font-weight:400;font-size:14px}
+  table.res thead tr.grp th{border-bottom:0;padding-bottom:0;color:var(--ink);font-size:11.5px;text-align:center}
+  table.res thead tr.grp th span{display:block;border-bottom:2px solid #d6d1f5;padding-bottom:4px;margin:0 4px}
+  .tbl-wrap{background:#fff;border:1px solid var(--line);border-radius:12px;padding:6px 10px}
+  section:first-of-type{border-top:none}
+  h2{font-weight:500;font-size:32px;text-align:center;margin:0 0 24px;letter-spacing:-.01em}
+  h3{font-size:19px;font-weight:500;margin:34px 0 10px}
+  p{margin:0 0 16px}
+  .justify{text-align:justify;hyphens:auto}
+  .lead{color:var(--ink-2);text-align:center;max-width:720px;margin:-8px auto 28px}
+
+  figure{margin:24px 0}
+  figure img{width:100%;display:block}
+  figcaption{font-size:15px;color:var(--ink-2);margin-top:10px}
+  .fig-row{display:grid;grid-template-columns:1.6fr 1fr;gap:20px;align-items:end}
+
+  /* taxonomy */
+  .tax{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}
+  .tcard{border:1px solid var(--line);border-radius:12px;padding:16px 14px;background:#fff;display:flex;flex-direction:column}
+  .tcard .tag{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:3px 8px;border-radius:6px;align-self:flex-start;margin-bottom:10px}
+  .tcard h4{margin:0 0 6px;font-size:15.5px;font-weight:500;line-height:1.3}
+  .tcard p{font-size:13.5px;color:var(--ink-2);margin:0 0 12px;line-height:1.5;flex:1}
+  .tcard .ex{font-family:var(--mono);font-size:12.5px;background:var(--soft);border-radius:6px;padding:7px 8px;text-align:center}
+  .t-keep .tag{background:var(--green-soft);color:var(--green-ink)}
+  .t-abl .tag{background:var(--yellow-soft);color:var(--yellow-ink)}
+  .t-drop .tag{background:var(--red-soft);color:var(--red-ink)}
+
+  /* ---------- animated method diagram ---------- */
+  .flow-wrap{overflow-x:auto;margin:6px -6px 0;padding:0 6px}
+  .flow{display:block;width:100%;min-width:780px;height:auto;font-family:var(--font)}
+  .flow text{font-family:var(--font)}
+  .flow .stg{opacity:0;transition:opacity .5s ease,transform .5s ease}
+  .flow .stg.on{opacity:1}
+  .flow .pop{opacity:0;transform:scale(.85);transform-box:fill-box;transform-origin:center;transition:opacity .4s ease,transform .4s cubic-bezier(.2,.9,.3,1.3)}
+  .flow .pop.on{opacity:1;transform:none}
+  .flow .wave rect{fill:#4285F4;transform-box:fill-box;transform-origin:center;animation:speak 2s ease-in-out infinite;animation-delay:var(--d)}
+  .flow .wave rect:nth-child(odd){animation-duration:1.6s}
+  .flow .wave rect:nth-child(3n){animation-duration:2.4s}
+  @keyframes speak{0%,100%{transform:scaleY(.18)}20%{transform:scaleY(.9)}35%{transform:scaleY(.4)}55%{transform:scaleY(1)}75%{transform:scaleY(.3)}}
+  .flow .wire{opacity:0;fill:none;stroke:#9aa0a6;stroke-width:2;stroke-dasharray:var(--len);stroke-dashoffset:var(--len);transition:stroke-dashoffset .6s ease}
+  .flow .wire.on{stroke-dashoffset:0;opacity:1}
+  .flow .wire.g{stroke:var(--g-green)} .flow .wire.r{stroke:#bdc1c6}
+  .flow .bar-va{transition:height .9s cubic-bezier(.2,.8,.2,1),y .9s cubic-bezier(.2,.8,.2,1)}
+  .flow .lbl{font-size:15px;fill:var(--ink-2);font-weight:500}
+  .flow-ctl{display:flex;justify-content:center;gap:10px;margin-top:6px}
+  .steps{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:22px}
+  .step .k{font-size:24px;font-weight:500}
+  .step:nth-child(1) .k{color:var(--g-blue)} .step:nth-child(2) .k{color:var(--g-red)} .step:nth-child(3) .k{color:var(--yellow-ink)} .step:nth-child(4) .k{color:var(--g-green)}
+  .step h4{margin:2px 0 6px;font-size:15.5px;font-weight:500}
+  .step p{font-size:14px;color:var(--ink-2);margin:0;line-height:1.55}
+
+  /* ---------- charts ---------- */
+  .legend{display:flex;gap:20px;justify-content:center;font-size:13.5px;color:var(--ink-2);margin-bottom:22px;flex-wrap:wrap}
+  .legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+  .crow{display:grid;grid-template-columns:150px 1fr;gap:14px;align-items:center;margin-bottom:18px}
+  .crow .m{font-weight:500;font-size:15px;text-align:right}
+  .bars{display:flex;flex-direction:column;gap:4px;border-left:1px solid #dadce0;padding-left:0}
+  .bar{height:22px;border-radius:0 4px 4px 0;display:flex;align-items:center;justify-content:flex-end;padding-right:8px;font-size:12.5px;font-weight:500;color:#fff;transition:width .7s cubic-bezier(.2,.8,.2,1);white-space:nowrap;overflow:visible}
+  .b-std{background:#ddd6fe;color:#5b3fd1;font-weight:700}
+  .b-va{background:#c9eeea;color:#0f766e;font-weight:700}
+  .b-full{background:#ffdccd;color:#c2410c;font-weight:700}
+
+  .vchart{display:grid;grid-template-columns:44px 1fr;gap:8px;margin:8px auto 0;max-width:760px}
+  .vaxis{position:relative;height:240px;font-size:12px;color:var(--ink-3)}
+  .vaxis span{position:absolute;right:0;transform:translateY(50%)}
+  .vplot{position:relative;height:240px;border-left:1px solid #dadce0;border-bottom:1px solid #9aa0a6;display:grid;grid-template-columns:repeat(3,1fr)}
+  .vplot .grid{position:absolute;left:0;right:0;border-top:1px dashed #e8eaed}
+  .vgroup{display:flex;justify-content:center;align-items:flex-end;gap:8px;position:relative;z-index:1}
+  .vbar{width:min(44px,7vw);border-radius:4px 4px 0 0;position:relative;height:0;transition:height .8s cubic-bezier(.2,.8,.2,1)}
+  .vbar span{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);font-size:12px;font-weight:500;color:var(--ink);padding-bottom:3px;white-space:nowrap}
+  .vlabels{grid-column:2;display:grid;grid-template-columns:repeat(3,1fr);text-align:center;font-size:14px;font-weight:500;padding-top:8px}
+  .ytitle{grid-column:1/-1;font-size:12.5px;color:var(--ink-2);text-align:center;margin-top:4px}
+
+  table.res{width:100%;border-collapse:collapse;font-size:14.5px;margin-top:8px;font-variant-numeric:tabular-nums}
+  table.res th,table.res td{padding:9px 10px;text-align:right;border-bottom:1px solid var(--line)}
+  table.res th{font-weight:500;font-size:12.5px;color:var(--ink-2);text-transform:uppercase;letter-spacing:.04em;vertical-align:bottom}
+  table.res td:first-child,table.res th:first-child{text-align:left}
+  table.res .hi{font-weight:700;color:var(--green-ink)}
+  .tbl-wrap{overflow-x:auto}
+
+  .callout{border-left:4px solid var(--g-blue);background:var(--blue-soft);padding:14px 18px;border-radius:0 10px 10px 0;margin:22px 0;font-size:15.5px}
+
+  pre.bib{background:var(--soft);border:1px solid var(--line);border-radius:10px;padding:18px 20px;font:13.5px/1.6 var(--mono);overflow-x:auto;margin:0;white-space:pre}
+  .bibwrap{position:relative}
+  .copy{position:absolute;top:10px;right:10px;border:1px solid var(--line);background:#fff;border-radius:8px;padding:5px 12px;font:500 13px var(--font);cursor:pointer}
+
+  footer{border-top:1px solid var(--line);padding:30px 0 50px;text-align:center;font-size:13.5px;color:var(--ink-3)}
+
+  @media (max-width:860px){
+    .tax{grid-template-columns:1fr 1fr}
+    .steps{grid-template-columns:1fr 1fr}
+    .stats{grid-template-columns:1fr}
+    .fig-row{grid-template-columns:1fr}
+    .crow{grid-template-columns:1fr}
+    .crow .m{text-align:left}
+    .t-bottom{grid-template-columns:1fr 1fr}
+    .t-bottom .p-form{grid-column:1/-1}
+  }
+  @media (max-width:520px){
+    body{font-size:16px}
+    .tax{grid-template-columns:1fr}
+    .wer-out{gap:24px}
+    .justify{text-align:left}
+    h2{font-size:27px;line-height:1.25}
+    .align td{font-size:14px;padding:5px 6px}
+    .tk .r,.tk .p{font-size:15.5px}
+    .t-bottom{grid-template-columns:1fr}
+    .affil img{height:34px} .affil img.ashesi{height:38px}
+  }
+  @media (prefers-reduced-motion:reduce){
+    *{transition:none!important;animation:none!important}
+  }
+</style>
+</head>
+<body>
+<div class="strip"></div>
+
+<div class="wrap">
+<header class="hero">
+  <a class="venue" href="https://africainai.mailab.io/">NeurIPS 2026 · Africa in AI Workshop</a>
+  <h1>Beyond Exact Match: Unmasking WER Inflation in Akan ASR through Variant‑Aware Evaluation</h1>
+  <div class="authors">
+    <a href="https://pmireku.github.io/princemireku">Prince Mireku<sup>1,2</sup></a>
+    <a href="https://scholar.google.com/citations?user=kqjr5N4AAAAJ">MohamedElfatih MohamedKhair<sup>1</sup></a>
+    <a href="https://scholar.google.com/citations?user=5KeIYCEAAAAJ">Emmanuel Asiedu Brempong<sup>1</sup></a>
+    <span>Amr Helmy<sup>1</sup></span>
+    <a href="https://www.linkedin.com/in/aperrynelson">Perry Nelson<sup>1</sup></a>
+    <a href="https://www.linkedin.com/in/siyavora">Tavonga Siyavora<sup>1</sup></a>
+    <a href="https://abdoulaye.ai">Abdoulaye Diack<sup>1</sup></a>
+    <a href="https://www.linkedin.com/in/aisha-walcott-bryant-phd">Aisha Walcott-Bryant<sup>1</sup></a>
+  </div>
+  <div class="affils">
+    <div class="affil"><div class="nm"><sup>1</sup>Google Research</div><img src="static/logos/google.svg" alt="Google"></div>
+    <div class="affil"><div class="nm"><sup>2</sup>Ashesi University</div><img class="ashesi" src="static/logos/ashesi.png" alt="Ashesi University"></div>
+  </div>
+
+  <div class="btns">
+    <a class="btn" href="static/paper.pdf"><svg viewBox="0 0 24 24"><path d="M6 2h9l5 5v15a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm8 1.5V8h4.5L14 3.5zM8 13v1.5h8V13H8zm0 3v1.5h8V16H8zm0-6v1.5h4V10H8z"/></svg>Paper</a>
+    <span class="btn soon"><svg viewBox="0 0 24 24"><path d="M3 4h7l2 3h9v13H3z"/></svg>arXiv <small>soon</small></span>
+  </div>
+</header>
+
+<!-- ============ Animated teaser: Figure 4, standard WER vs va-WER ============ -->
+<div class="teaser" id="teaser" aria-label="Animation: the same Akan sentence scored with standard WER and with variant-aware WER">
+  <div class="tz-scroll"><svg id="tz" viewBox="0 0 1800 800" role="img" aria-label="Standard WER gives 41.7 percent; variant-aware WER gives 8.3 percent on the same sentence"></svg></div>
+  <div class="t-ctrl"><button class="ctl" id="tPause">❚❚ Pause</button></div>
+</div>
+
+<div class="stats">
+  <div class="stat main"><div class="n">15–17%</div><div class="l">relative WER inflation from valid phonological &amp; code-switching variation alone</div></div>
+  <div class="stat"><div class="n">22–25%</div><div class="l">inflation once human spelling inconsistencies are included</div></div>
+  <div class="stat"><div class="n">7,434</div><div class="l">canonical lexicon entries mined from WAXAL</div></div>
+</div>
+</div>
+
+<main class="wrap">
+
+<section id="abstract">
+  <div class="narrow">
+  <span class="eyebrow">Overview</span>
+  <h2>Abstract</h2>
+  <p class="justify">Standard Automatic Speech Recognition (ASR) evaluation relies on Word Error Rate (WER), which treats every token-level mismatch as an error regardless of linguistic validity. For dialectally diverse languages like Akan, phonological variations, spelling discrepancies, and code-switching markers are penalized identically to genuine misrecognitions, inflating reported error rates. We introduce a <b>variant-aware WER (va-WER)</b> that normalizes predictions and references through a canonical lexicon compiled exclusively from training and validation data before scoring. Our framework classifies near-miss word pairs into a five-tier linguistic taxonomy using an LLM-as-a-Judge approach validated against native-speaker human annotators, then compiles frequency-based canonical lexicons.</p>
+  <p class="justify">Across three Akan ASR models (Whisper-large-v3, Gemma-3n-2B, MMS-1b-all), we demonstrate that: (1) standard WER is inflated by 15.0%–17.0% (relative) due strictly to legitimate phonological and code-switching variations, rising to 22.4%–25.4% when human spelling inconsistencies are included; (2) the LLM judge achieves 81.4% agreement with native speakers when orthographic categories are collapsed, and sensitivity simulations (N = 50 Monte Carlo trials) confirm that metric reduction remains statistically robust (p &lt; 10<sup>−4</sup>) even under substantial boundary noise; and (3) lexicons from spontaneous speech corpora transfer to independent Akan datasets, confirming that captured variants represent systematic linguistic phenomena rather than corpus-specific noise. We advocate reporting va-WER alongside standard WER in orthographically fluid languages to distinguish genuine model failures from benign dialectal variations.</p>
+  </div>
+</section>
+
+<section id="taxonomy" class="band">
+  <span class="eyebrow">Background</span>
+  <h2>A five-tier taxonomy of Akan variation</h2>
+  <p class="lead">Akan spans Asante Twi, Akuapem Twi and Fante, and three literary traditions (Basel Mission 1842, Christaller 1875, Akan Orthography Committee 1978) still coexist. Every near-miss pair is assigned one of five categories.</p>
+  <div class="tax">
+    <div class="tcard t-keep"><span class="tag">va-WER</span><h4>Intra-Dialect Phonological</h4><p>Spoken pronunciation shifts within a dialect, e.g. intervocalic rhotacism (d → r).</p><div class="ex">akwadaa ↔ akwaraa</div></div>
+    <div class="tcard t-keep"><span class="tag">va-WER</span><h4>Inter-Dialect Phonological</h4><p>Systematic differences between dialect groups where both forms are valid.</p><div class="ex">adwuma ↔ edwuma</div></div>
+    <div class="tcard t-keep"><span class="tag">va-WER</span><h4>Code-Switching</h4><p>English loanwords phonetically adapted into Akan orthography.</p><div class="ex">car ↔ kar</div></div>
+    <div class="tcard t-abl"><span class="tag">Ablation only</span><h4>Spelling Error</h4><p>Transcriber violations of orthographic conventions with no phonological basis.</p><div class="ex">bebree ↔ beberee</div></div>
+    <div class="tcard t-drop"><span class="tag">Discarded</span><h4>Different Words</h4><p>Genuine semantic or grammatical errors that change meaning.</p><div class="ex">tokua ↔ ntokua</div></div>
+  </div>
+</section>
+
+<section id="method">
+  <span class="eyebrow">Approach</span>
+  <h2>Method</h2>
+  <p class="lead">From raw transcripts to a variant-aware score in five stages.</p>
+  <div class="cap">End-to-end va-WER pipeline</div>
+
+  <div class="flow-wrap">
+  <svg class="flow" id="flow" viewBox="0 0 1160 470" role="img" aria-label="Animated pipeline: pairs generation, Gemini judge, filtering, lexicon construction, evaluation">
+    <defs>
+      <marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#9aa0a6"/></marker>
+      <marker id="ahg" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#34A853"/></marker>
+      <marker id="ahr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#bdc1c6"/></marker>
+    </defs>
+
+    <!-- A: corpus (live speech waveform) -->
+    <g class="stg" data-t="0">
+      <rect x="22" y="170" width="74" height="60" rx="18" fill="#e8f0fe"/>
+      <g class="wave">
+        <rect x="35" y="182" width="4" height="36" rx="2" style="--d:-.20s"/>
+        <rect x="43" y="182" width="4" height="36" rx="2" style="--d:-1.10s"/>
+        <rect x="51" y="182" width="4" height="36" rx="2" style="--d:-.50s"/>
+        <rect x="59" y="182" width="4" height="36" rx="2" style="--d:-1.60s"/>
+        <rect x="67" y="182" width="4" height="36" rx="2" style="--d:-.80s"/>
+        <rect x="75" y="182" width="4" height="36" rx="2" style="--d:-1.30s"/>
+        <rect x="83" y="182" width="4" height="36" rx="2" style="--d:-.35s"/>
+      </g>
+      <g transform="translate(94 170)">
+        <circle r="13" fill="#7c5cf0" stroke="#fff" stroke-width="2.5"/>
+        <path d="M-4.5 -6 H1.5 L4.5 -3 V6 H-4.5 Z" fill="#fff"/>
+        <path d="M1.5 -6 V-3 H4.5" fill="none" stroke="#7c5cf0" stroke-width="1.2"/>
+      </g>
+      <text x="58" y="262" text-anchor="middle" font-size="15" fill="#202124">Raw audio</text>
+      <text x="58" y="280" text-anchor="middle" font-size="15" fill="#202124">corpus</text>
+    </g>
+    <path class="wire" data-t="400" d="M102 200 H140" marker-end="url(#ah)"/>
+
+    <!-- B: pairs generation -->
+    <g class="stg" data-t="600">
+      <rect x="146" y="50" width="170" height="320" rx="18" fill="#e8f0fe"/>
+      <text x="231" y="86" text-anchor="middle" font-size="16" font-weight="500" fill="#202124">Unique tokens</text>
+      <text x="231" y="106" text-anchor="middle" font-size="16" font-weight="500" fill="#202124">&amp; frequencies</text>
+      <text x="231" y="126" text-anchor="middle" font-size="12" fill="#5f6368">train + val only</text>
+      <text x="231" y="336" text-anchor="middle" font-size="14" fill="#202124">Candidate pairs</text>
+      <text x="231" y="354" text-anchor="middle" font-size="12" fill="#5f6368">(edit distance = 1)</text>
+    </g>
+    <g class="pop" data-t="900"><rect x="164" y="150" width="134" height="34" rx="17" fill="#fff"/><text x="231" y="172" text-anchor="middle" font-size="14" fill="#202124">akwadaa ↔ akwaraa</text></g>
+    <g class="pop" data-t="1100"><rect x="164" y="194" width="134" height="34" rx="17" fill="#fff"/><text x="231" y="216" text-anchor="middle" font-size="14" fill="#202124">school ↔ sukuu</text></g>
+    <g class="pop" data-t="1300"><rect x="164" y="238" width="134" height="34" rx="17" fill="#fff"/><text x="231" y="260" text-anchor="middle" font-size="14" fill="#202124">bebree ↔ beberee</text></g>
+    <g class="pop" data-t="1500"><rect x="164" y="282" width="134" height="34" rx="17" fill="#fff"/><text x="231" y="304" text-anchor="middle" font-size="14" fill="#202124">tokua ↔ ntokua</text></g>
+    <path class="wire" data-t="1800" d="M322 210 H352" marker-end="url(#ah)"/>
+
+    <!-- C: Gemini judge -->
+    <g class="stg" data-t="2000">
+      <image href="static/logos/gemini.png" x="364" y="42" width="30" height="30"/>
+      <text x="456" y="63" text-anchor="middle" font-size="16" font-weight="500" fill="#202124">Gemini 3.5 Flash</text>
+      <rect x="358" y="80" width="164" height="118" rx="16" fill="#f1f3f4"/>
+      <text x="440" y="132" text-anchor="middle" font-size="17" fill="#202124">Chain-of-thought</text>
+      <text x="440" y="154" text-anchor="middle" font-size="17" fill="#202124">prompt</text>
+      <text x="440" y="222" text-anchor="middle" font-size="22" fill="#5f6368">+</text>
+      <rect x="358" y="238" width="164" height="118" rx="16" fill="#202124"/>
+      <text x="440" y="290" text-anchor="middle" font-size="17" fill="#fff">5-tier</text>
+      <text x="440" y="312" text-anchor="middle" font-size="17" fill="#fff">taxonomy</text>
+    </g>
+    <path class="wire" data-t="2700" d="M528 210 H556" marker-end="url(#ah)"/>
+
+    <!-- D: filtering -->
+    <g class="stg" data-t="2900">
+      <rect x="562" y="34" width="330" height="360" rx="26" fill="none" stroke="#bdc1c6" stroke-dasharray="5 5"/>
+    </g>
+    <g class="pop" data-t="3100"><rect x="578" y="56" width="148" height="50" rx="10" fill="#e6f4ea"/><text x="652" y="78" text-anchor="middle" font-size="13.5" fill="#202124">Phon. variant</text><text x="652" y="96" text-anchor="middle" font-size="12" fill="#5f6368">(inter-dialect)</text></g>
+    <g class="pop" data-t="3250"><rect x="578" y="118" width="148" height="50" rx="10" fill="#e6f4ea"/><text x="652" y="140" text-anchor="middle" font-size="13.5" fill="#202124">Phon. variant</text><text x="652" y="158" text-anchor="middle" font-size="12" fill="#5f6368">(intra-dialect)</text></g>
+    <g class="pop" data-t="3400"><rect x="578" y="180" width="148" height="50" rx="10" fill="#e8f0fe"/><text x="652" y="210" text-anchor="middle" font-size="13.5" fill="#202124">Code-switching</text></g>
+    <g class="pop" data-t="3550"><rect x="578" y="262" width="148" height="50" rx="10" fill="#fef7e0"/><text x="652" y="292" text-anchor="middle" font-size="13.5" fill="#202124">Spelling error</text></g>
+    <g class="pop" data-t="3700"><rect x="578" y="324" width="148" height="50" rx="10" fill="#fce8e6"/><text x="652" y="354" text-anchor="middle" font-size="13.5" fill="#202124">Different words</text></g>
+    <path class="wire g" data-t="4000" d="M730 81 H748 V140 H762" marker-end="url(#ahg)"/>
+    <path class="wire g" data-t="4000" d="M730 143 H762" marker-end="url(#ahg)"/>
+    <path class="wire g" data-t="4000" d="M730 205 H748 V146" />
+    <g class="pop" data-t="4300">
+      <rect x="768" y="64" width="110" height="160" rx="16" fill="#e6f4ea"/>
+      <text x="823" y="118" text-anchor="middle" font-size="17" font-weight="700" fill="#188038">Valid</text>
+      <text x="823" y="140" text-anchor="middle" font-size="17" font-weight="700" fill="#188038">variants</text>
+      <text x="823" y="172" text-anchor="middle" font-size="12" fill="#5f6368">legitimate</text>
+      <text x="823" y="188" text-anchor="middle" font-size="12" fill="#5f6368">variant pairs</text>
+    </g>
+    <path class="wire r" data-t="4500" d="M730 287 H748 V318 H762" marker-end="url(#ahr)"/>
+    <path class="wire r" data-t="4500" d="M730 349 H748 V318"/>
+    <g class="pop" data-t="4750">
+      <rect x="768" y="258" width="110" height="120" rx="16" fill="#f1f3f4"/>
+      <text x="823" y="312" text-anchor="middle" font-size="17" font-weight="700" fill="#5f6368">Ignored</text>
+      <text x="823" y="334" text-anchor="middle" font-size="17" font-weight="700" fill="#5f6368">pairs</text>
+    </g>
+    <path class="wire g" data-t="5100" d="M882 144 H905 V128 H918" marker-end="url(#ahg)"/>
+
+    <!-- E: lexicon -->
+    <g class="pop" data-t="5300"><rect x="924" y="108" width="38" height="38" rx="8" fill="#e8f0fe"/><text x="943" y="133" text-anchor="middle" font-size="15" font-weight="700" fill="#1a73e8">V₁</text></g>
+    <g class="pop" data-t="5450"><rect x="970" y="88" width="38" height="38" rx="8" fill="#e8f0fe"/><text x="989" y="113" text-anchor="middle" font-size="15" font-weight="700" fill="#1a73e8">V₂</text></g>
+    <g class="pop" data-t="5600"><rect x="1016" y="108" width="38" height="38" rx="8" fill="#e8f0fe"/><text x="1035" y="133" text-anchor="middle" font-size="15" font-weight="700" fill="#1a73e8">Vₙ</text></g>
+    <path class="wire" data-t="5800" d="M943 150 V230" marker-end="url(#ah)"/>
+    <path class="wire" data-t="5800" d="M989 130 V230" marker-end="url(#ah)"/>
+    <path class="wire" data-t="5800" d="M1035 150 V230" marker-end="url(#ah)"/>
+    <g class="pop" data-t="6100">
+      <rect x="922" y="236" width="134" height="64" rx="12" fill="#fef7e0" stroke="#FBBC04" stroke-width="2"/>
+      <text x="989" y="263" text-anchor="middle" font-size="14" font-weight="700" fill="#202124">CANONICAL</text>
+      <text x="989" y="283" text-anchor="middle" font-size="14" font-weight="700" fill="#202124">FORM</text>
+    </g>
+    <path class="wire" data-t="6400" d="M1060 268 H1072" marker-end="url(#ah)"/>
+
+    <!-- F: evaluation -->
+    <g class="stg" data-t="6500">
+      <line x1="1078" y1="190" x2="1078" y2="340" stroke="#5f6368" stroke-width="1.5"/>
+      <line x1="1078" y1="340" x2="1136" y2="340" stroke="#5f6368" stroke-width="1.5"/>
+      <rect x="1084" y="200" width="20" height="140" rx="3" fill="#4285F4"/>
+      <text x="1094" y="358" text-anchor="middle" font-size="11" fill="#5f6368">std</text>
+      <text x="1120" y="358" text-anchor="middle" font-size="11" fill="#5f6368">va</text>
+      <text x="1107" y="176" text-anchor="middle" font-size="13" font-weight="500" fill="#202124">WER</text>
+    </g>
+    <rect class="bar-va" id="flowVa" x="1110" y="200" width="20" height="140" rx="3" fill="#34A853" opacity="0"/>
+
+    <!-- stage labels -->
+    <text class="lbl" x="231" y="432" text-anchor="middle">Pairs generation</text>
+    <text class="lbl" x="440" y="432" text-anchor="middle">LLM judge</text>
+    <text class="lbl" x="727" y="432" text-anchor="middle">Filtering</text>
+    <text class="lbl" x="989" y="432" text-anchor="middle">Lexicon</text>
+    <text class="lbl" x="1107" y="432" text-anchor="middle">Evaluation</text>
+    <!-- travelling pulse -->
+    <circle id="pulse" r="6" fill="#FBBC04" opacity="0"/>
+  </svg>
+  </div>
+
+  <div class="steps">
+    <div class="step"><div class="k">01</div><h4>Near-miss candidates</h4><p>Extract unique tokens from <b>train + val only</b> and pair every word within Levenshtein distance d = 1. The test split is never seen.</p></div>
+    <div class="step"><div class="k">02</div><h4>LLM judge</h4><p>Gemini 3.5 Flash classifies each pair with a 4-step chain-of-thought prompt, grounded in two real corpus sentences per pair.</p></div>
+    <div class="step"><div class="k">03</div><h4>Canonical lexicon</h4><p>The more frequent form becomes canonical. A directed graph resolves diverging mappings, cycles and transitive chains into O(1) lookups.</p></div>
+    <div class="step"><div class="k">04</div><h4>Normalize &amp; score</h4><p>Map both reference and hypothesis through the lexicon, then compute ordinary WER: <code>WER(norm(ref), norm(pred))</code>.</p></div>
+  </div>
+
+  <div class="cap">Why edit distance 1? The low-CER / high-WER paradox</div>
+  <p>Character error rates cluster at 10–30% while WER sits at 40–50%: models produce grapheme sequences that are nearly identical to references but get penalized at the word level. Over 10,000 substitutions occur at exactly one character of difference, and frequency drops off sharply beyond that.</p>
+  <div class="fig-row">
+    <figure><img src="static/images/fig2a_wer_cer.png" alt="WER vs CER distributions"><figcaption>(a) WER and CER score distributions.</figcaption></figure>
+    <figure><img src="static/images/fig2b_edit_distance.png" alt="Levenshtein edit distances"><figcaption>(b) Edit distance of substituted word pairs.</figcaption></figure>
+  </div>
+</section>
+
+<section id="results" class="band">
+  <span class="eyebrow">Main results</span>
+  <h2>Results</h2>
+  <p class="lead">Held-out WAXAL test split, three Akan fine-tuned foundation models, lexicon compiled from WAXAL train + val.</p>
+  <div class="cap">WER by model on the held-out WAXAL test set <span>(%, lower is better)</span></div>
+  <div class="legend">
+    <span><i style="background:#ddd6fe;box-shadow:inset 0 0 0 1.5px #5b3fd1"></i>Standard WER</span>
+    <span><i style="background:#c9eeea;box-shadow:inset 0 0 0 1.5px #0f766e"></i>Strict va-WER</span>
+    <span><i style="background:#ffdccd;box-shadow:inset 0 0 0 1.5px #c2410c"></i>Fully normalized (+ spelling)</span>
+  </div>
+  <div id="chart"></div>
+
+  <div class="cap"><b>Table 2</b>Standard WER vs. strict va-WER and fully-normalized WER <span>(WAXAL test, train + val lexicon)</span></div>
+  <div class="tbl-wrap">
+  <table class="res">
+    <thead>
+      <tr class="grp"><th></th><th><span>Standard</span></th><th colspan="2"><span>Strict va-WER</span></th><th colspan="2"><span>Fully normalized (+ spelling)</span></th><th colspan="3"><span>Absolute points recovered, by category</span></th></tr>
+      <tr><th>Model</th><th>WER</th><th>WER</th><th>Δ Rel</th><th>WER</th><th>Δ Rel</th><th>Phonological</th><th>Code-switch</th><th>Spelling</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Gemma-3n-2B</td><td>40.00</td><td>34.02</td><td class="hi">14.95%</td><td>31.02</td><td>22.45%</td><td>5.87</td><td>0.11</td><td>2.54</td></tr>
+      <tr><td>Whisper-large-v3</td><td>38.97</td><td>32.35</td><td class="hi">16.99%</td><td>29.07</td><td>25.40%</td><td>6.47</td><td>0.15</td><td>2.73</td></tr>
+      <tr><td>MMS-1b-all</td><td>39.54</td><td>33.14</td><td class="hi">16.19%</td><td>30.01</td><td>24.10%</td><td>6.26</td><td>0.14</td><td>2.60</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="callout"><b>Phonological variation is the dominant driver</b>, accounting for 5.87–6.47 absolute WER points across models; code-switching adds a steady 0.11–0.15. For Whisper, the total 9.90-point recovery splits into 65.4% phonological, 27.6% spelling, 1.5% code-switching, and 5.6% from alignment synergies when normalizations are applied jointly.</div>
+
+  <div class="cap" style="margin-top:40px">Where the near-misses come from</div>
+  <p>Most raw near-miss pairs are genuinely different words and are discarded. Valid variants concentrate in spontaneous speech: over 30% of WAXAL candidate pairs are legitimate variants (7,434 lexicon entries), while scripted read speech in FID yields only 25.</p>
+  <figure><img src="static/images/fig3_taxonomy.png" alt="Distribution of candidate word pairs by taxonomy category across corpora"><figcaption>Share of candidate word pairs in each taxonomy category, per corpus.</figcaption></figure>
+</section>
+
+<section id="transfer">
+  <span class="eyebrow">Generalization</span>
+  <h2>Lexicons transfer across corpora</h2>
+  <p class="lead">Relative WER reduction on WAXAL test predictions when the lexicon is compiled from each source corpus.</p>
+  <div class="cap">Cross-corpus lexicon transfer <span>(relative WER reduction on WAXAL test)</span></div>
+  <div class="legend">
+    <span><i style="background:var(--g-blue)"></i>WAXAL (native, spontaneous)</span>
+    <span><i style="background:var(--g-red)"></i>GhanaNLP (community)</span>
+    <span><i style="background:var(--g-yellow)"></i>FID (scripted)</span>
+  </div>
+  <div class="vchart" id="xchart">
+    <div class="vaxis"><span style="bottom:0">0%</span><span style="bottom:25%">5%</span><span style="bottom:50%">10%</span><span style="bottom:75%">15%</span><span style="bottom:100%">20%</span></div>
+    <div class="vplot" id="xplot">
+      <div class="grid" style="bottom:25%"></div><div class="grid" style="bottom:50%"></div><div class="grid" style="bottom:75%"></div><div class="grid" style="bottom:100%"></div>
+    </div>
+    <div class="vlabels"><div>Gemma-3n-2B</div><div>Whisper-large-v3</div><div>MMS-1b-all</div></div>
+    <div class="ytitle">Relative WER reduction (%)</div>
+  </div>
+  <p style="margin-top:22px">The GhanaNLP lexicon, built from community spontaneous speech, still removes 3.1–3.5% of relative WER on WAXAL, while scripted FID removes under 0.8%. Variant coverage scales with how spontaneous and diverse the source register is, which suggests the lexicon captures recurring linguistic phenomena rather than corpus artifacts. (Lexicon size differs substantially across corpora and partly confounds the comparison.)</p>
+</section>
+
+<section id="impact" class="band">
+  <div class="narrow">
+  <span class="eyebrow">Broader impact</span>
+  <h2>Why it matters</h2>
+  <p class="justify">Voice interfaces are a gateway to civic and financial services across Africa, where oral communication often outpaces written literacy. A Fante-speaking farmer in the Central Region says <i>edwuma</i> (work); an Ashanti clinician expects <i>adwuma</i>. Reporting an unadjusted 40% WER instead of an operational 32% can get a viable model abandoned. va-WER aligns benchmarks with how Akan is actually spoken, and the compiled lexicons can be reused to clean noisy corpora, aid cross-dialect translation, and inform language planning. The recipe (near-miss mining, LLM-guided taxonomy, graph resolution) is a low-cost blueprint for other multidialectal languages such as Yoruba, Igbo, Wolof and Luganda.</p>
+  <p class="justify" style="color:var(--ink-2);font-size:15px"><b>Responsible use.</b> The lexicons are intended for acoustic benchmarking and corpus normalization, not for cultural or orthographic standardization. Collapsing variants erases regional distinctions, so va-WER is unsuitable for accent or dialect identification.</p>
+  </div>
+</section>
+
+<section id="bibtex">
+  <div class="narrow">
+  <span class="eyebrow">Citation</span>
+  <h2>BibTeX</h2>
+  <div class="bibwrap">
+    <button class="copy" id="copyBtn">Copy</button>
+<pre class="bib" id="bib">@inproceedings{mireku2026beyond,
+  title     = {Beyond Exact Match: Unmasking {WER} Inflation in {Akan} {ASR}
+               through Variant-Aware Evaluation},
+  author    = {Mireku, Prince and MohamedKhair, MohamedElfatih and
+               Brempong, Emmanuel Asiedu and Helmy, Amr and Nelson, Perry and
+               Siyavora, Tavonga and Diack, Abdoulaye and Walcott-Bryant, Aisha},
+  booktitle = {NeurIPS 2026 Workshop on Africa in AI},
+  year      = {2026}
+}</pre>
+  </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">Page layout inspired by <a href="https://nerfies.github.io/">Nerfies</a> and <a href="https://boundaryattention.github.io/">Boundary Attention</a>. Set in Google Sans.</div>
+</footer>
+
+<script>
+const REDUCED = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+/* shared sentence (Figure 4) */
+const WORDS = [
+  {r:"Mbaayewa", p:"Maayewa", k:"ph"},
+  {r:"no", p:"no"},
+  {r:"hyɛ", p:"hyɛ"},
+  {r:"jeans", p:"gyins", k:"cm"},
+  {r:"wɔ", p:"wɔ"},
+  {r:"school", p:"sukuu", k:"cm"},
+  {r:"n'akyir,", p:"n'akyi,", k:"ph"},
+  {r:"nanso", p:"nanso"},
+  {r:"wɔn", p:"wɔn"},
+  {r:"benkum", p:"benkim", k:"sp"},
+  {r:"gu", p:"gu"},
+  {r:"fam.", p:"fam."}
+];
+const KNAME = {ph:"Phonological", cm:"Code-switch", sp:"Spelling"};
+
+/* ================= Animated teaser (Figure 4 style) ================= */
+(() => {
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.getElementById('tz'), box = document.getElementById('teaser');
+  const C = {ink:'#202124', ink2:'#5f6368', arrow:'#80868b',
+    redF:'#fde7e7', redS:'#f4a7a3', redT:'#c5221f',
+    grnF:'#e6f4ea', grnS:'#81c995', grnT:'#188038',
+    bluF:'#e8f0fe', bluS:'#8ab4f8', bluT:'#1a73e8',
+    greyF:'#f1f3f4', pinkC:'#fde2e1', grnC:'#e2f3e6'};
+  const KCOL = {ph:[C.grnF,C.grnS,C.grnT], cm:[C.bluF,C.bluS,C.bluT], sp:[C.redF,C.redS,C.redT]};
+  const KTAG = {ph:'Ph', cm:'Cm', sp:'Sp'};
+  let SPEED = REDUCED ? 60 : 1.5, paused = false, visible = false, run = 0, mode = 'wide';
+
+  const el = (t, a = {}, p) => { const e = document.createElementNS(NS, t); for (const k in a) e.setAttribute(k, a[k]); if (p) p.appendChild(e); return e; };
+  const txt = (p, x, y, str, a = {}) => { const t = el('text', Object.assign({x, y}, a), p); t.textContent = str; return t; };
+  async function wait(ms, id){ let t = 0; while (t < ms){ await new Promise(r => setTimeout(r, 30)); if (id !== run) throw 'stop'; if (!paused && visible) t += 30 * SPEED; } }
+  const frame = () => new Promise(r => requestAnimationFrame(r));
+  const ease = e => e < .5 ? 2*e*e : 1 - Math.pow(-2*e + 2, 2) / 2;
+  async function tween(ms, id, fn, ez = ease){
+    let t = 0, last = performance.now();
+    for (;;){ await frame(); if (id !== run) throw 'stop'; const now = performance.now();
+      if (!paused && visible) t += (now - last) * SPEED; last = now;
+      const k = Math.min(1, t / ms); fn(ez(k)); if (k >= 1) break; }
+  }
+  function measure(str, size, weight = 500){
+    const t = txt(svg, -9999, -9999, str, {'font-size': size, 'font-weight': weight}); const w = t.getComputedTextLength(); t.remove(); return w;
+  }
+  function layout(){
+    for (let fs = 27; fs > 14; fs--){
+      const ws = WORDS.map(w => Math.max(measure(w.r, fs), measure(w.p, fs)));
+      const gap = (790 - ws.reduce((a, b) => a + b, 0)) / 11;
+      if (gap >= 13){ let x = 100; return {fs, pad: Math.min(10, gap/2 - 1.5), cols: ws.map(w => { const c = {l:x, w, c:x + w/2}; x += w + gap; return c; })}; }
+    }
+  }
+  function arrowHead(path){ path.setAttribute('marker-end', 'url(#tzA)'); }
+  function dashPrep(e, len){ e.style.strokeDasharray = len; e.style.strokeDashoffset = len; }
+
+  function buildPanel(kind, g, L){
+    const va = kind === 'va', P = {kind, g, words:[], marks:[], cols:L.cols};
+    P.title = el('g', {class:'fd'}, g);
+    if (va){
+      const tw = measure('Variant-Aware WER', 32, 700) + measure('★ ', 32, 700);
+      el('rect', {x:450 - tw/2 - 22, y:24, width:tw + 44, height:50, rx:25, fill:'#fff4d6', stroke:'#f6c453', 'stroke-width':1.5}, P.title);
+      const t = txt(P.title, 450, 60, '', {'text-anchor':'middle','font-size':32,'font-weight':700,fill:C.ink});
+      const st = el('tspan', {fill:'#e8a200'}, t); st.textContent = '★ ';
+      t.append('Variant-Aware WER');
+    } else txt(P.title, 450, 60, 'Standard WER', {'text-anchor':'middle','font-size':32,'font-weight':700,fill:C.ink});
+    if (va){
+      P.legend = el('g', {class:'fd'}, g);
+      [['sp','Spelling error'],['ph','Phonological variant'],['cm','Code-mixing']].forEach(([k, lab], i) => {
+        const y = 18 + i * 24;
+        el('rect', {x:716, y, width:28, height:18, rx:4, fill:KCOL[k][0]}, P.legend);
+        txt(P.legend, 730, y + 13.5, KTAG[k], {'text-anchor':'middle','font-size':11,'font-weight':700,fill:KCOL[k][2]});
+        txt(P.legend, 752, y + 14, lab, {'font-size':15, fill:C.ink2});
+      });
+    }
+    const pill = (y, label, f, st, tc) => { const gg = el('g', {class:'pop'}, g);
+      el('rect', {x:8, y, width:78, height:42, rx:9, fill:f, stroke:st, 'stroke-dasharray':'5 4', 'stroke-width':1.5}, gg);
+      txt(gg, 47, y + 28, label, {'text-anchor':'middle','font-size':19,'font-weight':700,fill:tc}); return gg; };
+    P.pillR = pill(130, 'Ref', C.grnF, C.grnS, C.grnT);
+    P.pillP = pill(210, 'Pred', C.bluF, C.bluS, C.bluT);
+    const boxLayer = el('g', {}, g);
+    const yLex = 372, yForm = 500;
+    WORDS.forEach((w, i) => {
+      const col = L.cols[i];
+      const r = txt(g, col.c - measure(w.r, L.fs)/2, 160, '', {'font-size':L.fs,'font-weight':500,fill:C.ink});
+      const p = txt(g, col.c - measure(w.p, L.fs)/2, 240, '', {'font-size':L.fs,'font-weight':500,fill:C.ink});
+      P.words.push({r, p});
+      if (!w.k) return;
+      const bw = col.w + 2 * L.pad, per = 2 * (bw + 152);
+      const bx = el('rect', {x:col.l - L.pad, y:120, width:bw, height:152, rx:14, fill:C.redF, 'fill-opacity':0, stroke:C.redS, 'stroke-width':1.6}, boxLayer);
+      dashPrep(bx, per);
+      const cost = txt(g, col.c, 302, '', {'text-anchor':'middle','font-size':19,'font-weight':500,fill:C.ink2});
+      const yEnd = va ? yLex - 4 : yForm - 6, len = yEnd - 312;
+      const ar = el('path', {d:`M${col.c} 312 V${yEnd}`, fill:'none', stroke:C.arrow, 'stroke-width':1.6}, g);
+      dashPrep(ar, len);
+      let tag = null;
+      if (va){ tag = el('g', {class:'pop'}, g);
+        el('rect', {x:col.c + 5, y:330, width:26, height:17, rx:4, fill:'#fff', stroke:'#dadce0'}, tag);
+        txt(tag, col.c + 18, 342.5, KTAG[w.k], {'text-anchor':'middle','font-size':10.5,'font-weight':700,fill:KCOL[w.k][2]}); }
+      P.marks.push({i, k:w.k, col, bx, per, cost, ar, len, yEnd, tag});
+    });
+
+    if (va){
+      const spCol = P.marks.find(m => m.k === 'sp').col;
+      P.lex = el('g', {class:'fd'}, g);
+      el('rect', {x:40, y:yLex, width:820, height:96, rx:14, fill:C.greyF, stroke:'#dadce0'}, P.lex);
+      const db = el('g', {fill:'none', stroke:C.ink2, 'stroke-width':2}, P.lex);
+      el('ellipse', {cx:96, cy:397, rx:20, ry:6.5}, db);
+      el('path', {d:'M76 397 V433 a20 6.5 0 0 0 40 0 V397 M76 415 a20 6.5 0 0 0 40 0'}, db);
+      txt(P.lex, 96, 458, 'Lexicon', {'text-anchor':'middle','font-size':12.5,'font-weight':500,fill:C.ink2});
+      const rowW = spCol.l - 40 - 150;
+      const row = (y, k, str) => { const gg = el('g', {}, P.lex);
+        const rc = el('rect', {x:150, y, width:rowW, height:34, rx:8, fill:'#fff', stroke:'#e8eaed'}, gg);
+        el('rect', {x:158, y:y + 7, width:30, height:20, rx:5, fill:KCOL[k][0]}, gg);
+        txt(gg, 173, y + 21.5, KTAG[k], {'text-anchor':'middle','font-size':11.5,'font-weight':700,fill:KCOL[k][2]});
+        txt(gg, 200, y + 23, str, {'font-size':17, fill:C.ink, style:'white-space:pre'});
+        return rc; };
+      P.rowPh = row(381, 'ph', 'Mbaayewa ↔ Maayewa   ·   n’akyir ↔ n’akyi');
+      P.rowCm = row(423, 'cm', 'jeans ↔ gyins   ·   school ↔ sukuu');
+      P.miss = txt(g, spCol.c, 428, '✗ no entry', {'text-anchor':'middle','font-size':17,'font-weight':700,fill:C.redT,class:'fd'});
+      P.loops = [`M40 422 C 6 422, 6 552, 36 552`, `M860 422 C 894 422, 894 552, 864 552`].map(d => {
+        const a = el('path', {d, fill:'none', stroke:C.arrow, 'stroke-width':1.6}, g); const len = a.getTotalLength(); dashPrep(a, len); return {a, len}; });
+    }
+
+    /* formula */
+    P.form = el('g', {class:'fd'}, g);
+    el('rect', {x:40, y:yForm, width:820, height:104, rx:16, fill:'#f8f9fa', stroke:'#bdc1c6', 'stroke-dasharray':'7 5', 'stroke-width':1.5}, P.form);
+    txt(P.form, 62, 562, 'WER =', {'font-size':26,'font-weight':700,fill:C.ink});
+    txt(P.form, 322, 540, 'Substitution + Insertion + Deletion', {'text-anchor':'middle','font-size':20,'font-weight':500,fill:C.ink});
+    el('line', {x1:162, x2:482, y1:551, y2:551, stroke:C.ink, 'stroke-width':1.5}, P.form);
+    txt(P.form, 322, 581, 'N (Words)', {'text-anchor':'middle','font-size':20,'font-weight':500,fill:C.ink});
+    txt(P.form, 497, 562, '=', {'font-size':24,fill:C.ink});
+    const num = txt(P.form, 642, 540, '', {'text-anchor':'middle','font-size':21,'font-weight':500,fill:C.ink});
+    num.append('S(');
+    P.S = el('tspan', {'font-weight':700, fill:va ? C.grnT : C.redT}, num); P.S.textContent = '0';
+    num.append(') + I(0) + D(0)');
+    el('line', {x1:536, x2:748, y1:551, y2:551, stroke:C.ink, 'stroke-width':1.5}, P.form);
+    P.N = txt(P.form, 642, 582, '?', {'text-anchor':'middle','font-size':21,'font-weight':700,fill:C.ink});
+    txt(P.form, 760, 562, '× 100', {'font-size':22,fill:C.ink});
+    const fullNum = measure('S(5) + I(0) + D(0)', 21);
+    P.slotS = {x: 642 - fullNum/2 + measure('S(', 21) + measure('5', 21, 700)/2, y:533};
+    P.slotN = {x:642, y:576};
+
+    /* result */
+    P.resAr = el('path', {d:'M450 606 V632', fill:'none', stroke:C.arrow, 'stroke-width':1.6}, g); dashPrep(P.resAr, 26);
+    P.werLab = txt(g, 360, 704, 'WER', {'text-anchor':'end','font-size':34,'font-weight':700,fill:C.ink,class:'fd'});
+    P.res = el('g', {class:'pop'}, g);
+    P.ring = el('circle', {cx:450, cy:696, r:60, fill:'none', stroke: va ? C.grnS : C.redS, 'stroke-width':3, opacity:0}, P.res);
+    el('circle', {cx:450, cy:696, r:60, fill: va ? C.grnC : C.pinkC}, P.res);
+    P.val = txt(P.res, 450, va ? 694 : 706, '0%', {'text-anchor':'middle','font-size':29,'font-weight':700,fill: va ? C.grnT : C.redT});
+    if (va) P.delta = txt(P.res, 450, 720, '(Δ ≈ 80% ↓)', {'text-anchor':'middle','font-size':15,'font-weight':500,fill:C.grnT});
+    return P;
+  }
+
+  /* -------- animation primitives -------- */
+  async function type(t, str, id, ms){ for (let j = 1; j <= str.length; j++){ t.textContent = str.slice(0, j); await wait(ms, id); } }
+  async function draw(e, len, ms, id){ await tween(ms, id, k => e.style.strokeDashoffset = len * (1 - k)); }
+  async function fill(e, ms, id){ await tween(ms, id, k => e.setAttribute('fill-opacity', k)); }
+  const on = e => e.classList.add('on');
+  async function flyOne(P, pts, id, ms, red = true){
+    const tok = el('g', {}, P.g);
+    el('circle', {r:13, fill:'#fff', stroke: red ? C.redT : C.grnT, 'stroke-width':2}, tok);
+    txt(tok, 0, 5.5, '1', {'text-anchor':'middle','font-size':15,'font-weight':700,fill: red ? C.redT : C.grnT});
+    const seg = []; let total = 0;
+    for (let i = 1; i < pts.length; i++){ const d = Math.hypot(pts[i].x - pts[i-1].x, pts[i].y - pts[i-1].y); seg.push(d); total += d; }
+    try {
+      await tween(ms, id, k => { let d = k * total, i = 0; while (i < seg.length - 1 && d > seg[i]){ d -= seg[i]; i++; }
+        const a = pts[i], b = pts[i+1], f = seg[i] ? Math.min(1, d / seg[i]) : 1;
+        tok.setAttribute('transform', `translate(${a.x + (b.x - a.x) * f},${a.y + (b.y - a.y) * f})`); });
+    } finally { tok.remove(); }
+  }
+  async function bump(t, v, id){ t.textContent = v; t.setAttribute('font-size', 28); await wait(140, id); t.setAttribute('font-size', 21); }
+  async function countWords(P, id, ms){
+    /* number every reference word, then carry the total N = 12 into the denominator */
+    const nums = el('g', {}, P.g);
+    for (let i = 0; i < 12; i++){
+      const w = P.words[i].r, x = P.cols[i].c;
+      w.setAttribute('fill', C.bluT);
+      const b = el('g', {class:'pop'}, nums);
+      el('circle', {cx:x, cy:104, r:12, fill:C.bluF, stroke:C.bluS}, b);
+      txt(b, x, 108.5, String(i + 1), {'text-anchor':'middle','font-size':13,'font-weight':700,fill:C.bluT});
+      requestAnimationFrame(() => b.classList.add('on'));
+      P.N.textContent = i + 1;
+      await wait(ms, id);
+      w.setAttribute('fill', C.ink);
+    }
+    await wait(350, id);
+    const last = P.cols[11];
+    const tok = el('g', {}, P.g);
+    el('rect', {x:-38, y:-15, width:76, height:30, rx:15, fill:'#fff', stroke:C.bluT, 'stroke-width':2}, tok);
+    txt(tok, 0, 5.5, 'N = 12', {'text-anchor':'middle','font-size':15,'font-weight':700,fill:C.bluT});
+    const a = {x:last.c, y:104}, m = {x:last.c + 40, y:300}, b2 = P.slotN;
+    try {
+      await tween(1100, id, k => { const u = 1 - k;
+        const x = u*u*a.x + 2*u*k*m.x + k*k*b2.x, y = u*u*a.y + 2*u*k*m.y + k*k*b2.y;
+        tok.setAttribute('transform', `translate(${x},${y})`); });
+    } finally { tok.remove(); }
+    await bump(P.N, '12', id);
+    await wait(300, id);
+    await tween(400, id, k => nums.setAttribute('opacity', 1 - k));
+    nums.remove();
+  }
+  async function result(P, id, from, to, ms){
+    await draw(P.resAr, 26, 260, id); arrowHead(P.resAr);
+    on(P.werLab); on(P.res); await wait(250, id);
+    await tween(ms, id, k => P.val.textContent = (from + (to - from) * k).toFixed(from > to ? 2 : 1) + '%');
+    P.val.textContent = to.toFixed(to < 10 ? 2 : 1) + '%';
+    P.ring.setAttribute('opacity', 1); P.ring.classList.add('ring');
+  }
+
+  /* -------- the two acts -------- */
+  async function actStd(P, id){
+    on(P.title); await wait(500, id);
+    for (let i = 0; i < 12; i++){ await type(P.words[i].r, WORDS[i].r, id, 55); await wait(70, id); }
+    await wait(350, id);
+    for (let i = 0; i < 12; i++){ await type(P.words[i].p, WORDS[i].p, id, 55); await wait(70, id); }
+    await wait(400, id);
+    on(P.pillR); await wait(250, id); on(P.pillP); await wait(800, id);
+    for (const m of P.marks){ await draw(m.bx, m.per, 480, id); fill(m.bx, 300, id); await wait(120, id); }
+    await wait(700, id);
+    for (const m of P.marks){ await type(m.cost, 'cost: 1', id, 40); m.cost.setAttribute('fill', C.redT); await wait(160, id); }
+    await wait(600, id);
+    for (const m of P.marks){ await draw(m.ar, m.len, 420, id); arrowHead(m.ar); await wait(80, id); }
+    await wait(500, id);
+    on(P.form); await wait(1500, id);
+    let s = 0;
+    for (const [j, m] of P.marks.entries()){
+      await flyOne(P, [{x:m.col.c, y:300}, {x:m.col.c, y:m.yEnd}, P.slotS], id, j === 0 ? 1300 : 800);
+      await bump(P.S, ++s, id); await wait(j === 0 ? 400 : 150, id);
+    }
+    await wait(500, id);
+    await countWords(P, id, 170);
+    await wait(700, id);
+    await result(P, id, 0, 41.7, 1000);
+    await wait(2200, id);
+  }
+
+  async function actVa(P, id){
+    on(P.title); on(P.legend); await wait(500, id);
+    for (let i = 0; i < 12; i++){ await type(P.words[i].r, WORDS[i].r, id, 26); await wait(30, id); }
+    await wait(200, id);
+    for (let i = 0; i < 12; i++){ await type(P.words[i].p, WORDS[i].p, id, 26); await wait(30, id); }
+    await wait(300, id);
+    on(P.pillR); on(P.pillP); await wait(600, id);
+    for (const m of P.marks){ await draw(m.bx, m.per, 340, id); fill(m.bx, 250, id); await wait(60, id); }
+    await wait(600, id);
+    on(P.lex); await wait(700, id);
+    for (const m of P.marks){ await draw(m.ar, m.len, 300, id); arrowHead(m.ar); on(m.tag); await wait(80, id); }
+    await wait(700, id);
+    /* look-up each mismatch */
+    for (const m of P.marks){
+      const ok = m.k !== 'sp';
+      const dot = el('circle', {r:7, fill:'#FBBC04', cx:m.col.c, cy:312}, P.g);
+      try { await tween(520, id, k => dot.setAttribute('cy', 312 + (m.yEnd - 312) * k)); } finally { dot.remove(); }
+      if (ok){
+        const row = m.k === 'ph' ? P.rowPh : P.rowCm;
+        row.setAttribute('fill', KCOL[m.k][0]); row.setAttribute('stroke', KCOL[m.k][1]);
+        m.bx.setAttribute('fill', KCOL[m.k][0]); m.bx.setAttribute('stroke', KCOL[m.k][1]); m.bx.setAttribute('stroke-dasharray', '6 5'); m.bx.style.strokeDasharray = '6 5'; m.bx.style.strokeDashoffset = 0;
+        await type(m.cost, 'cost: 0', id, 35); m.cost.setAttribute('fill', KCOL[m.k][2]);
+        await wait(250, id); row.setAttribute('fill', '#fff'); row.setAttribute('stroke', '#e8eaed');
+      } else {
+        on(P.miss);
+        await type(m.cost, 'cost: 1', id, 35); m.cost.setAttribute('fill', C.redT);
+      }
+      await wait(450, id);
+    }
+    await wait(500, id);
+    await Promise.all(P.loops.map(l => draw(l.a, l.len, 650, id)));
+    P.loops.forEach(l => arrowHead(l.a));
+    on(P.form); await wait(1200, id);
+    const sp = P.marks.find(m => m.k === 'sp');
+    await flyOne(P, [{x:sp.col.c, y:300}, {x:sp.col.c, y:sp.yEnd}, {x:sp.col.c, y:486}, P.slotS], id, 1300);
+    await bump(P.S, 1, id); await wait(400, id);
+    await countWords(P, id, 90);
+    await wait(500, id);
+    await result(P, id, 41.7, 8.33, 1200);
+    on(P.delta);
+  }
+
+  async function play(){
+    const id = ++run;
+    await document.fonts.ready;
+    mode = box.clientWidth >= 760 ? 'wide' : 'narrow';
+    box.classList.toggle('narrow', mode === 'narrow');
+    svg.innerHTML = '';
+    svg.setAttribute('viewBox', mode === 'wide' ? '0 0 1800 800' : '0 0 900 1640');
+    const defs = el('defs', {}, svg);
+    const mk = el('marker', {id:'tzA', viewBox:'0 0 10 10', refX:8.5, refY:5, markerWidth:7, markerHeight:7, orient:'auto-start-reverse'}, defs);
+    el('path', {d:'M0 0 L10 5 L0 10 z', fill:C.arrow}, mk);
+    const L = layout();
+    const gL = el('g', {}, svg), gR = el('g', {}, svg);
+    const PL = buildPanel('std', gL, L), PR = buildPanel('va', gR, L);
+    const div = el('line', {stroke:'#bdc1c6', 'stroke-width':2, 'stroke-dasharray':'9 8'}, svg);
+    if (mode === 'wide'){
+      gL.style.transform = 'translate(450px,0px)'; gR.style.transform = 'translate(900px,0px)';
+      div.setAttribute('x1', 900); div.setAttribute('x2', 900); div.setAttribute('y1', 20); div.setAttribute('y2', 20);
+    } else {
+      gR.style.transform = 'translate(0px,840px)';
+      div.setAttribute('x1', 20); div.setAttribute('x2', 20); div.setAttribute('y1', 820); div.setAttribute('y2', 820);
+    }
+    try {
+      await actStd(PL, id);
+      if (mode === 'wide'){
+        await tween(1300, id, k => gL.style.transform = `translate(${450 * (1 - k)}px,0px)`);
+        await tween(700, id, k => div.setAttribute('y2', 20 + 760 * k));
+      } else {
+        await tween(700, id, k => div.setAttribute('x2', 20 + 860 * k));
+      }
+      await wait(400, id);
+      await actVa(PR, id);
+      if (REDUCED) return;
+      await wait(7000, id);
+      play();
+    } catch (e) { /* superseded by a newer run */ }
+  }
+
+  const pauseBtn = document.getElementById('tPause');
+  pauseBtn.addEventListener('click', () => { paused = !paused; pauseBtn.textContent = paused ? '▶ Play' : '❚❚ Pause'; });
+  let lastMode = null;
+  window.addEventListener('resize', () => { const m = box.clientWidth >= 760 ? 'wide' : 'narrow'; if (lastMode && m !== lastMode) play(); lastMode = m; });
+  lastMode = box.clientWidth >= 760 ? 'wide' : 'narrow';
+  new IntersectionObserver(es => es.forEach(e => { visible = e.isIntersecting; }), {threshold:.2}).observe(box);
+  play();
+})();
+
+/* ================= Animated method flow ================= */
+(() => {
+  const svg = document.getElementById('flow');
+  const items = [...svg.querySelectorAll('[data-t]')].sort((a,b) => a.dataset.t - b.dataset.t);
+  const wires = svg.querySelectorAll('.wire');
+  wires.forEach(w => { const L = Math.ceil(w.getTotalLength()); if (!w.style.strokeDasharray) w.style.setProperty('--len', L); else { w.style.setProperty('--len', L); } });
+  const vaBar = document.getElementById('flowVa');
+  const pulse = document.getElementById('pulse');
+  let run = 0, visible = false;
+  function reset(){
+    items.forEach(i => i.classList.remove('on'));
+    vaBar.setAttribute('opacity', 0); vaBar.setAttribute('y', 200); vaBar.setAttribute('height', 140);
+    pulse.setAttribute('opacity', 0);
+  }
+  function all(){ items.forEach(i => i.classList.add('on')); vaBar.setAttribute('opacity', 1); vaBar.setAttribute('y', 246); vaBar.setAttribute('height', 94); }
+  async function travel(path, id){
+    const L = path.getTotalLength(); pulse.setAttribute('opacity', 1);
+    const t0 = performance.now(), dur = 520;
+    while (true){
+      if (id !== run) return;
+      const k = Math.min(1, (performance.now() - t0) / dur);
+      const p = path.getPointAtLength(L * k); pulse.setAttribute('cx', p.x); pulse.setAttribute('cy', p.y);
+      if (k >= 1) break;
+      await new Promise(r => requestAnimationFrame(r));
+    }
+    pulse.setAttribute('opacity', 0);
+  }
+  async function play(){
+    const id = ++run; reset();
+    if (REDUCED){ all(); return; }
+    const t0 = performance.now();
+    for (const it of items){
+      const due = +it.dataset.t;
+      while (performance.now() - t0 < due){ await sleep(30); if (id !== run) return; }
+      it.classList.add('on');
+      if (it.classList.contains('wire') && !it.classList.contains('r')) travel(it, id);
+    }
+    await sleep(500); if (id !== run) return;
+    vaBar.setAttribute('opacity', 1);
+    await sleep(60);
+    vaBar.setAttribute('y', 246); vaBar.setAttribute('height', 94);
+    await sleep(5500); if (id !== run) return;
+    if (visible) play(); else run = 0;
+  }
+  new IntersectionObserver(es => es.forEach(e => { visible = e.isIntersecting; if (visible && run === 0) play(); }), {threshold:.3}).observe(svg);
+  reset();
+})();
+
+/* ================= Charts (Google palette) ================= */
+(() => {
+  const res = [
+    {m:"Whisper-large-v3", std:38.97, va:32.35, full:29.07},
+    {m:"MMS-1b-all", std:39.54, va:33.14, full:30.01},
+    {m:"Gemma-3n-2B", std:40.00, va:34.02, full:31.02}
+  ];
+  const MAX = 42;
+  const bar = (c,v,l) => `<div class="bar ${c}" style="width:0" data-w="${v/MAX*100}">${l}</div>`;
+  const chart = document.getElementById("chart");
+  chart.innerHTML = res.map(r=>`
+    <div class="crow"><div class="m">${r.m}</div><div class="bars">
+      ${bar("b-std",r.std,r.std.toFixed(2)+"%")}
+      ${bar("b-va",r.va,r.va.toFixed(2)+"%  (−"+((r.std-r.va)/r.std*100).toFixed(1)+"%)")}
+      ${bar("b-full",r.full,r.full.toFixed(2)+"%  (−"+((r.std-r.full)/r.std*100).toFixed(1)+"%)")}
+    </div></div>`).join("");
+
+  const xfer = [
+    {m:"Gemma-3n-2B", v:[14.95,3.48,0.70]},
+    {m:"Whisper-large-v3", v:[16.99,3.44,0.67]},
+    {m:"MMS-1b-all", v:[16.19,3.09,0.78]}
+  ];
+  const cols = ["var(--g-blue)","var(--g-red)","var(--g-yellow)"];
+  const plot = document.getElementById("xplot");
+  plot.insertAdjacentHTML("beforeend", xfer.map(g=>`<div class="vgroup">${g.v.map((v,i)=>`<div class="vbar" style="background:${cols[i]}" data-h="${v/20*100}"><span>${v.toFixed(2)}%</span></div>`).join("")}</div>`).join(""));
+
+  const grow = () => {
+    chart.querySelectorAll(".bar").forEach(b=>b.style.width=b.dataset.w+"%");
+    plot.querySelectorAll(".vbar").forEach((b,i)=>setTimeout(()=>b.style.height=b.dataset.h+"%", i*60));
+  };
+  const io = new IntersectionObserver(es=>es.forEach(e=>{
+    if(!e.isIntersecting) return;
+    if(e.target===chart) chart.querySelectorAll(".bar").forEach(b=>b.style.width=b.dataset.w+"%");
+    if(e.target===plot) plot.querySelectorAll(".vbar").forEach((b,i)=>setTimeout(()=>b.style.height=b.dataset.h+"%", i*60));
+    io.unobserve(e.target);
+  }),{threshold:.2});
+  if (REDUCED) grow(); else { io.observe(chart); io.observe(plot); }
+})();
+
+/* copy bibtex */
+document.getElementById("copyBtn").addEventListener("click",async e=>{
+  try{ await navigator.clipboard.writeText(document.getElementById("bib").textContent); e.target.textContent="Copied"; }
+  catch{ e.target.textContent="Select & copy"; }
+  setTimeout(()=>e.target.textContent="Copy",1800);
+});
+</script>
+</body>
+</html>
